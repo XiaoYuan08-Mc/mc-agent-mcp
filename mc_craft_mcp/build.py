@@ -93,6 +93,13 @@ def gradle_build(project_dir: str, task: str = "build", timeout: int = 900,
         artifacts = [str(p) for p in sorted(libs.glob("*.jar"))]
 
     tail = ((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()[-40:]
+    blob = (proc.stdout or "") + (proc.stderr or "")
+    hint = ""
+    if proc.returncode != 0 and ("insufficient memory" in blob.lower()
+                                 or "outofmemoryerror" in blob.lower()):
+        hint = ("构建 JVM 内存不足：NeoForge 26.x 首次构建会用 -Xmx4096m 反编译 Minecraft，"
+                "需要至少 6~8GB 可用提交内存。可调大系统虚拟内存/页面文件，"
+                "或设置 MCC_JAVA_HOME 指向 64 位 JDK 25 后重试。")
     return {
         "project_dir": str(root),
         "task": task,
@@ -103,4 +110,5 @@ def gradle_build(project_dir: str, task: str = "build", timeout: int = 900,
         "artifacts": artifacts,
         "log": str(logs),
         "output_tail": "\n".join(tail),
+        "hint": hint,
     }

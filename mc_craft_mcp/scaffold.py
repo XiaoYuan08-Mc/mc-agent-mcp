@@ -24,20 +24,41 @@ PACK_FORMATS = {
     "1.20.5": 41, "1.20.6": 41,
     "1.21": 34, "1.21.1": 34, "1.21.2": 42, "1.21.3": 42, "1.21.4": 46,
     "1.21.5": 55, "1.21.6": 63, "1.21.7": 64, "1.21.8": 64,
+    "1.21.9": 69, "1.21.10": 69, "1.21.11": 75,
+    "26.1": 84, "26.1.1": 84, "26.1.2": 84, "26.2": 88, "26.3": 97,
 }
 PACK_FORMAT_DEFAULT = 34
+# First release that writes min_format/max_format instead of pack_format only.
+PACK_RANGE_SINCE = (1, 21, 9)
 
 
 class ScaffoldError(RuntimeError):
     pass
 
 
+def version_key(mc_version: str) -> tuple[int, ...]:
+    """Numeric sort key for a Minecraft version ('26.3' -> (26, 3))."""
+    return tuple(int(p) for p in re.findall(r"\d+", mc_version)[:3])
+
+
+def is_modern_version(mc_version: str) -> bool:
+    """Minecraft 26.x and later ship unobfuscated jars and need Java 25."""
+    key = version_key(mc_version)
+    return bool(key) and key[0] >= 26
+
+
 def java_version_for(mc_version: str) -> int:
-    parts = [int(p) for p in re.findall(r"\d+", mc_version)[:2]] or [1, 20]
-    major, minor = parts[0], parts[1]
+    if is_modern_version(mc_version):
+        return 25
+    key = version_key(mc_version) or (1, 20, 0)
+    while len(key) < 3:
+        key += (0,)
+    major, minor, patch = key[0], key[1], key[2]
     if major != 1:
         return 8
-    if minor >= 20.5 or minor >= 21:
+    if (minor, patch) >= (21, 0):
+        return 21
+    if (minor, patch) >= (20, 5):
         return 21
     if minor >= 17:
         return 17
@@ -49,8 +70,41 @@ def java_version_for(mc_version: str) -> int:
 def pack_format_for(mc_version: str) -> int:
     if mc_version in PACK_FORMATS:
         return PACK_FORMATS[mc_version]
+    key = version_key(mc_version)
+    best: tuple[tuple[int, ...], int] | None = None
+    for known, fmt in PACK_FORMATS.items():
+        kk = version_key(known)
+        if kk and kk <= key and (best is None or kk > best[0]):
+            best = (kk, fmt)
+    if best:
+        return best[1]
     prefix = ".".join(mc_version.split(".")[:2])
     return PACK_FORMATS.get(prefix, PACK_FORMAT_DEFAULT)
+
+
+def uses_pack_format_range(mc_version: str) -> bool:
+    """1.21.9+ understands min_format/max_format (major/minor pack versions)."""
+    key = version_key(mc_version)
+    return bool(key) and key >= PACK_RANGE_SINCE
+
+
+def pack_meta(mc_version: str, description: str) -> dict:
+    fmt = pack_format_for(mc_version)
+    pack: dict = {
+        "pack_format": fmt,
+        "description": description,
+    }
+    if uses_pack_format_range(mc_version):
+        pack["min_format"] = [fmt, 0]
+        pack["max_format"] = [fmt, 1]
+    return {"pack": pack}
+
+
+def gradle_version_for(mc_version: str, loader: str = "fabric") -> str:
+    """Gradle major must match the toolchain: Loom 1.19 / MDG 2.0 need Gradle 9."""
+    if is_modern_version(mc_version):
+        return "9.2.1" if loader == "neoforge" else "9.8.2"
+    return "8.10"
 
 
 def _class_name(mod_id: str) -> str:
@@ -70,8 +124,9 @@ def _write(root: Path, files: dict[str, str]) -> list[str]:
 def attach_wrapper(root: Path, gradle_version: str = "8.10") -> str | None:
     """Generate gradle wrapper files in a scratch project and copy them in.
 
-    Gradle 9 cannot configure Fabric Loom, so the wrapper pins an 8.x
-    distribution while the installed CLI only produces the four wrapper files.
+    Legacy Loom (1.7/1.9) needs an 8.x distribution; 26.x targets Loom 1.19 /
+    ModDevGradle 2.0, which require Gradle 9. The installed CLI only produces the
+    four wrapper files, so its own version does not leak into the project.
     """
     gradle = shutil.which("gradle")
     if not gradle:
@@ -316,6 +371,228 @@ def _neoforge_files(mc: str, mod_id: str, name: str, pkg: str, java: int,
     }
 
 
+def _fabric_modern_files(mc: str, mod_id: str, name: str, pkg: str, java: int,
+                         loader: str, fabric_api: str | None, loom: str,
+                         desc: str) -> dict[str, str]:
+    """Fabric template for 26.x: unobfuscated jars, no mappings, plugin id is
+    net.fabricmc.fabric-loom (the legacy fabric-loom id is pre-26.1 only)."""
+    cls = _class_name(mod_id)
+    pkg_path = pkg.replace(".", "/")
+    api_dep = ',\n    "fabric-api": "*"' if fabric_api else ""
+    api_line = (f'    implementation "net.fabricmc.fabric-api:fabric-api:{fabric_api}"\n'
+                if fabric_api else "")
+    return {
+        "settings.gradle": (
+            "pluginManagement {\n"
+            "    repositories {\n"
+            "        maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }\n"
+            "        mavenCentral()\n"
+            "        gradlePluginPortal()\n"
+            "    }\n"
+            "}\n\n"
+            f'rootProject.name = "{mod_id}"\n'
+        ),
+        "build.gradle": (
+            "plugins {\n"
+            f"    id 'net.fabricmc.fabric-loom' version '{loom}'\n"
+            "    id 'maven-publish'\n"
+            "}\n\n"
+            "version = project.mod_version\n"
+            "group = project.maven_group\n\n"
+            "base {\n"
+            "    archivesName = project.archives_base_name\n"
+            "}\n\n"
+            "repositories {\n"
+            "    mavenCentral()\n"
+            "}\n\n"
+            "dependencies {\n"
+            '    minecraft "com.mojang:minecraft:${project.minecraft_version}"\n'
+            '    implementation "net.fabricmc:fabric-loader:${project.loader_version}"\n'
+            f"{api_line}"
+            "}\n\n"
+            "processResources {\n"
+            '    inputs.property "version", project.version\n'
+            '    filesMatching("fabric.mod.json") {\n'
+            '        expand "version": project.version\n'
+            "    }\n"
+            "}\n\n"
+            "tasks.withType(JavaCompile).configureEach {\n"
+            "    it.options.release = %d\n"
+            "}\n\n"
+            "java {\n"
+            "    withSourcesJar()\n"
+            "    toolchain {\n"
+            "        languageVersion = JavaLanguageVersion.of(%d)\n"
+            "    }\n"
+            "}\n" % (java, java)
+        ),
+        "gradle.properties": (
+            "org.gradle.jvmargs=-Xmx2G\n"
+            "org.gradle.parallel=true\n\n"
+            f"minecraft_version={mc}\n"
+            f"loader_version={loader}\n"
+            f"fabric_api_version={fabric_api or ''}\n"
+            "mod_version=1.0.0\n"
+            f"maven_group={pkg.rsplit('.', 1)[0] if '.' in pkg else pkg}\n"
+            f"archives_base_name={mod_id}\n"
+        ),
+        "src/main/resources/fabric.mod.json": (
+            "{\n"
+            '  "schemaVersion": 1,\n'
+            f'  "id": "{mod_id}",\n'
+            '  "version": "${version}",\n'
+            f'  "name": {json.dumps(name, ensure_ascii=False)},\n'
+            f'  "description": {json.dumps(desc, ensure_ascii=False)},\n'
+            '  "authors": [],\n'
+            '  "license": "MIT",\n'
+            '  "environment": "*",\n'
+            '  "entrypoints": {\n'
+            f'    "main": ["{pkg}.{cls}"]\n'
+            "  },\n"
+            '  "depends": {\n'
+            f'    "fabricloader": ">={loader}",\n'
+            f'    "minecraft": "~{mc}",\n'
+            f'    "java": ">={java}"{api_dep}\n'
+            "  }\n"
+            "}\n"
+        ),
+        f"src/main/java/{pkg_path}/{cls}.java": (
+            f"package {pkg};\n\n"
+            "import net.fabricmc.api.ModInitializer;\n"
+            "import org.slf4j.Logger;\n"
+            "import org.slf4j.LoggerFactory;\n\n"
+            f"public class {cls} implements ModInitializer {{\n"
+            f'    public static final String MOD_ID = "{mod_id}";\n'
+            f'    public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);\n\n'
+            "    @Override\n"
+            "    public void onInitialize() {\n"
+            '        LOGGER.info("[{}] initialized", MOD_ID);\n'
+            "    }\n"
+            "}\n"
+        ),
+        "LICENSE": "MIT License\n\nCopyright (c) the project authors.\n",
+        ".gitignore": "build/\n.gradle/\nrun/\n.idea/\n*.iml\n",
+        "README.md": f"# {name}\n\nMinecraft {mc} · Fabric · generated by mc-agent.\n\n"
+                     "### 环境\n\n"
+                     f"- JDK {java}+（Gradle toolchain 会检查）\n"
+                     f"- Gradle {gradle_version_for(mc, 'fabric')}（wrapper 已固定）\n"
+                     "- 26.x 起 Minecraft 不再混淆，因此模板里没有 mappings 行\n\n"
+                     "```\n./gradlew build\n```\n\n产物在 `build/libs/`。\n",
+        "run/.gitkeep": "",
+    }
+
+
+def _neoforge_modern_files(mc: str, mod_id: str, name: str, pkg: str, java: int,
+                           loader: str, desc: str, mdg: str = "2.0.148") -> dict[str, str]:
+    """NeoForge 26.x template following the ModDevGradle 2.x MDK layout."""
+    cls = _class_name(mod_id)
+    pkg_path = pkg.replace(".", "/")
+    mc_range = f"[{mc}]"
+    return {
+        "settings.gradle": (
+            "pluginManagement {\n"
+            "    repositories {\n"
+            "        gradlePluginPortal()\n"
+            "        mavenCentral()\n"
+            "    }\n"
+            "}\n\n"
+            "plugins {\n"
+            "    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'\n"
+            "}\n\n"
+            f'rootProject.name = "{mod_id}"\n'
+        ),
+        "build.gradle": (
+            "plugins {\n"
+            "    id 'java-library'\n"
+            "    id 'maven-publish'\n"
+            f"    id 'net.neoforged.moddev' version '{mdg}'\n"
+            "}\n\n"
+            "version = project.mod_version\n"
+            "group = project.mod_group_id\n\n"
+            "base {\n"
+            "    archivesName = project.mod_id\n"
+            "}\n\n"
+            "java.toolchain.languageVersion = JavaLanguageVersion.of(%d)\n\n"
+            "neoForge {\n"
+            "    version = project.neo_version\n\n"
+            "    runs {\n"
+            "        client {\n"
+            "            client()\n"
+            "        }\n"
+            "        server {\n"
+            "            server()\n"
+            "            programArgument '--nogui'\n"
+            "        }\n"
+            "    }\n\n"
+            '    mods {\n'
+            '        "${project.mod_id}" {\n'
+            "            sourceSet(sourceSets.main)\n"
+            "        }\n"
+            "    }\n"
+            "}\n\n"
+            "tasks.withType(JavaCompile).configureEach {\n"
+            "    options.encoding = 'UTF-8'\n"
+            "}\n" % java
+        ),
+        "gradle.properties": (
+            "org.gradle.jvmargs=-Xmx1G\n"
+            "org.gradle.parallel=true\n\n"
+            f"minecraft_version={mc}\n"
+            f"minecraft_version_range={mc_range}\n"
+            f"neo_version={loader}\n\n"
+            f"mod_id={mod_id}\n"
+            f"mod_name={name}\n"
+            "mod_license=MIT\n"
+            "mod_version=1.0.0\n"
+            f"mod_group_id={pkg.rsplit('.', 1)[0] if '.' in pkg else pkg}\n"
+        ),
+        "src/main/resources/META-INF/neoforge.mods.toml": (
+            'license = "MIT"\n\n'
+            "[[mods]]\n"
+            f'modId = "{mod_id}"\n'
+            'version = "1.0.0"\n'
+            f'displayName = {json.dumps(name, ensure_ascii=False)}\n'
+            f'description = {json.dumps(desc, ensure_ascii=False)}\n\n'
+            "[[dependencies.%s]]\n"
+            'modId = "neoforge"\n'
+            'type = "required"\n'
+            f'versionRange = "[{loader},)"\n'
+            'ordering = "NONE"\n'
+            'side = "BOTH"\n\n'
+            "[[dependencies.%s]]\n"
+            'modId = "minecraft"\n'
+            'type = "required"\n'
+            f'versionRange = "{mc_range}"\n'
+            'ordering = "NONE"\n'
+            'side = "BOTH"\n' % (mod_id, mod_id)
+        ),
+        f"src/main/java/{pkg_path}/{cls}.java": (
+            f"package {pkg};\n\n"
+            "import com.mojang.logging.LogUtils;\n"
+            "import net.neoforged.bus.api.IEventBus;\n"
+            "import net.neoforged.fml.ModContainer;\n"
+            "import net.neoforged.fml.common.Mod;\n"
+            "import org.slf4j.Logger;\n\n"
+            f"@Mod({cls}.MOD_ID)\n"
+            f"public class {cls} {{\n"
+            f'    public static final String MOD_ID = "{mod_id}";\n\n'
+            "    public static final Logger LOGGER = LogUtils.getLogger();\n\n"
+            f"    public {cls}(IEventBus modBus, ModContainer modContainer) {{\n"
+            '        LOGGER.info("[{}] initialized", MOD_ID);\n'
+            "    }\n"
+            "}\n"
+        ),
+        "LICENSE": "MIT License\n\nCopyright (c) the project authors.\n",
+        ".gitignore": "build/\n.gradle/\nrun/\n.idea/\n*.iml\n",
+        "README.md": f"# {name}\n\nMinecraft {mc} · NeoForge · generated by mc-agent.\n\n"
+                     "### 环境\n\n"
+                     f"- JDK {java}+（Gradle toolchain / foojay 自动解析）\n"
+                     f"- Gradle {gradle_version_for(mc, 'neoforge')}（wrapper 已固定）\n"
+                     f"- NeoForge {loader}（ModDevGradle 2.x）\n\n"
+                     "```\n./gradlew build\n```\n\n产物在 `build/libs/`。\n",
+    }
+
+
 def scaffold_mod(
     loader: str,
     mc_version: str,
@@ -342,34 +619,43 @@ def scaffold_mod(
     display = name or mod_id
     desc = description or f"{display} for Minecraft {mc_version}"
     java = java_version_for(mc_version)
+    modern = is_modern_version(mc_version)
     resolved = {}
+    gradle = gradle_version_for(mc_version, loader)
 
     if loader == "fabric":
         loader_v = resolve.fabric_loader_version(mc_version)
         api_v = resolve.fabric_api_version(mc_version) if include_fabric_api else None
         loom = resolve.loom_version(mc_version)
         resolved = {"loader_version": loader_v, "fabric_api": api_v, "loom": loom,
-                    "java": java}
-        files = _fabric_files(mc_version, mod_id, display, pkg, java, loader_v, api_v,
-                              loom, desc)
+                    "java": java, "obfuscated": not modern}
+        builder = _fabric_modern_files if modern else _fabric_files
+        files = builder(mc_version, mod_id, display, pkg, java, loader_v, api_v, loom, desc)
     else:
         loader_v = resolve.neoforge_version(mc_version)
-        resolved = {"loader_version": loader_v, "java": java}
-        files = _neoforge_files(mc_version, mod_id, display, pkg, java, loader_v, desc)
+        mdg = resolve.moddev_version(mc_version)
+        resolved = {"loader_version": loader_v, "moddev": mdg, "java": java}
+        if modern:
+            files = _neoforge_modern_files(mc_version, mod_id, display, pkg, java, loader_v,
+                                           desc, mdg)
+        else:
+            files = _neoforge_files(mc_version, mod_id, display, pkg, java, loader_v, desc)
 
     root.mkdir(parents=True, exist_ok=True)
     written = _write(root, files)
     (root / ".mc-craft.json").write_text(json.dumps({
         "loader": loader, "mc_version": mc_version, "mod_id": mod_id,
-        "package": pkg, "java": java, "resolved": resolved,
+        "package": pkg, "java": java, "gradle": gradle, "resolved": resolved,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    wrapper = attach_wrapper(root) if with_wrapper else None
+    wrapper = attach_wrapper(root, gradle) if with_wrapper else None
     return {
         "project_dir": str(root),
         "loader": loader,
         "mc_version": mc_version,
         "java": java,
+        "modern": modern,
+        "gradle": gradle,
         "resolved": resolved,
         "files": written,
         "gradle_wrapper": wrapper,

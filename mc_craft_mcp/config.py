@@ -62,4 +62,10 @@ def java_home_candidates() -> list[Path]:
             for candidate in (child / "current", child):
                 if (candidate / "bin" / "java.exe").exists():
                     out.append(candidate)
+            # Scoop sometimes unpacks an archive into a nested jdk-* directory,
+            # e.g. apps\temurin25-jdk\<ver>\jdk-25.0.5.1+2\bin\java.exe.
+            for pattern in ("jdk-*", "*/jdk-*", "*/current"):
+                for nested in sorted(child.glob(pattern), reverse=True):
+                    if (nested / "bin" / "java.exe").exists():
+                        out.append(nested)
     return out

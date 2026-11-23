@@ -17,12 +17,13 @@ scaffold_mod(loader="fabric", mc_version="1.21.1", mod_id="my_mod", name="My Mod
              dest="<项目目录>")
 ```
 
-返回里重点看 `resolved`（loader / fabric_api / loom / java）与 `gradle_wrapper`：
+返回里重点看 `resolved`（loader / fabric_api / loom / moddev / java）、`gradle` 与 `gradle_wrapper`：
 
-- Fabric：`officialMojangMappings()`，不猜 yarn 版本；`fabric-api` 版本从 Modrinth 现查。
+- Fabric：1.21.x 及以前用 `officialMojangMappings()`，不猜 yarn 版本；`fabric-api` 版本从 Modrinth 现查。
 - NeoForge：`net.neoforged.moddev` + `neoForge { version = ... }`，版本从 neoforged maven 现查。
+- **26.x（26.1 / 26.2 / 26.3）是另一套矩阵**：Java 25、Gradle 9（Fabric 9.8.2 / NeoForge 9.2.1）、Fabric 插件 id 改成 `net.fabricmc.fabric-loom`（Loom 1.19+）且模板里没有 mappings 行、依赖走 `implementation`；NeoForge 走 ModDevGradle 2.x + foojay toolchain。资源包 `pack_format` 26.3 是 97，且 1.21.9 起要写 `min_format`/`max_format`。
 - **Forge 不做**：MDK 与 Gradle 矩阵未验证，猜版本等于交付坏工程。用户要 Forge 就说明限制。
-- 生成的是 Gradle 8.10 wrapper（Loom 不能在 Gradle 9 上配置）。
+- wrapper 版本跟着目标版本走：1.21.x 及以前是 Gradle 8.10，26.x 是 Gradle 9。
 
 ## 3. 写内容
 

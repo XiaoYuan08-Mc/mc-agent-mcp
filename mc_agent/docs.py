@@ -185,6 +185,22 @@ CORPUS: list[dict] = [
         "snippet": "{\n  \"pack\": { \"pack_format\": 46, \"description\": \"My Pack\" }\n}",
     },
     {
+        "symbol": "pack.mcmeta (1.21.9+/26.x)", "side": "common", "since": "1.21.9",
+        "tags": ["resourcepack", "资源包", "pack_format", "min_format", "26.x"],
+        "summary": "1.21.9 起资源包改为 major.minor 版本号，pack.mcmeta 用 min_format/max_format 声明范围（26.3 资源包为 97，数据包 121）。仍写 pack_format 只作为旧版回退。",
+        "snippet": "{\n  \"pack\": {\n    \"min_format\": [97, 0],\n    \"max_format\": [97, 1],\n    \"description\": \"My Pack\"\n  }\n}",
+    },
+    {
+        "symbol": "fabric-loom (26.x)", "side": "common", "since": "26.1",
+        "tags": ["fabric", "gradle", "loom", "26.x"],
+        "summary": "26.1 起 Minecraft 不再混淆：Fabric 插件 id 必须换成 net.fabricmc.fabric-loom（≤1.21.11 才是 fabric-loom），模板不再需要 mappings 行，依赖用 implementation 而不是 modImplementation。Loom 1.19+ / JDK 25 / Gradle 9。",
+        "snippet": "plugins { id 'net.fabricmc.fabric-loom' version '1.19.4' }\n"
+                   "dependencies {\n"
+                   "    minecraft \"com.mojang:minecraft:${project.minecraft_version}\"\n"
+                   "    implementation \"net.fabricmc:fabric-loader:${project.loader_version}\"\n"
+                   "}",
+    },
+    {
         "symbol": "fabric.mod.json", "side": "common", "since": "1.20",
         "tags": ["fabric", "元数据", "入口"],
         "summary": "Fabric 模组元数据。entrypoints.main 的类实现 ModInitializer；client 的类实现 ClientModInitializer，二者不要混。",

@@ -127,6 +127,29 @@ async def run(full: bool) -> int:
         except Exception as exc:  # noqa: BLE001
             failures.append(f"mrpack: {exc}")
 
+        # 6. version matrix (pure logic, no network)
+        try:
+            from mc_craft_mcp import scaffold as sc_mod
+            assert sc_mod.java_version_for("1.20.4") == 17
+            assert sc_mod.java_version_for("1.20.5") == 21
+            assert sc_mod.java_version_for("1.21.8") == 21
+            assert sc_mod.java_version_for("26.3") == 25
+            assert sc_mod.is_modern_version("26.1") and not sc_mod.is_modern_version("1.21.11")
+            assert sc_mod.pack_format_for("1.21.8") == 64
+            assert sc_mod.pack_format_for("1.21.9") == 69
+            assert sc_mod.pack_format_for("26.3") == 97
+            assert sc_mod.pack_format_for("1.21.12") == 75  # floor lookup, not default
+            assert sc_mod.uses_pack_format_range("26.3")
+            assert not sc_mod.uses_pack_format_range("1.21.8")
+            meta = sc_mod.pack_meta("26.3", "smoke")["pack"]
+            assert meta["min_format"] == [97, 0] and meta["max_format"] == [97, 1]
+            assert sc_mod.gradle_version_for("26.3") == "9.8.2"
+            assert sc_mod.gradle_version_for("26.3", "neoforge") == "9.2.1"
+            assert sc_mod.gradle_version_for("1.21.1") == "8.10"
+            print("version matrix: ok")
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"version matrix: {exc}")
+
         if full:
             # 6. scaffold + real build
             try:

@@ -263,11 +263,13 @@ def apply_animation(name: str, length: float = 1.0, loop: str = "loop",
 @_guard
 def export_asset(asset_name: str = "", format: str = "bbmodel", entity_base: str = "",
                  dest_path: str = "", namespace: str = "mcagent",
-                 emissive_part_ids: list | None = None, pixel_grain: int = 16) -> dict:
+                 emissive_part_ids: list | None = None, pixel_grain: int = 16,
+                 mc_version: str = "1.21.1") -> dict:
     """导出当前模型。format: bbmodel | resourcepack | geckolib | glb | mcaddon(受限)。
 
     - bbmodel：Blockbench 工程文件（可继续手改）
-    - resourcepack：Java 资源包 zip（含模型 + 贴图 + 物品模型）
+    - resourcepack：Java 资源包 zip（含模型 + 贴图 + 物品模型）；pack.mcmeta 按
+      mc_version 生成（1.21.9+ 写 min_format/max_format，26.3 = 97）
     - geckolib：geo/animations/texture 三件套，直接放 mod 的 assets 目录
     - glb：最小 glTF 2.0 二进制（顶点色，无贴图）
     - mcaddon：只产 geometry + 贴图，行为包/刷怪蛋需自行补（本地不生成实体行为）
@@ -295,7 +297,8 @@ def export_asset(asset_name: str = "", format: str = "bbmodel", entity_base: str
         path, extra = written["output"], {"validation": written["validation"]}
     elif fmt == "resourcepack":
         target = out_dir / f"{name}_rp.zip"
-        r = assets.export_resourcepack(m, str(target), namespace, entity_base, tex)
+        r = assets.export_resourcepack(m, str(target), namespace, entity_base, tex,
+                                       mc_version=mc_version)
         path, extra = r["output"], {"files": r["files"]}
     elif fmt == "geckolib":
         geo_dir = out_dir / "geckolib" / name
@@ -824,8 +827,11 @@ def scaffold_mod(mod_id: str, loader: str = "fabric", display_name: str = "",
                  description: str = "", project_dir: str = "",
                  minecraft_version: str = "1.21.1", include_geckolib: bool = False,
                  include_mesh_model: bool = False) -> dict:
-    """生成可编译的 Fabric / NeoForge 工程（wrapper 8.10 已内置，loader 版本现查）。
+    """生成可编译的 Fabric / NeoForge 工程（loader/Loom/Gradle 版本现查）。
 
+    minecraft_version 支持 1.16~1.21.11 的旧命名与 26.1/26.2/26.3 新命名：
+    26.x 自动切 JDK 25、Gradle 9、net.fabricmc.fabric-loom（无 mappings）
+    或 ModDevGradle 2.x，wrapper 也按目标版本固定。
     include_geckolib 只加依赖备注；include_mesh_model 忽略（本实现只出立方体模型）。
     """
     res = scaffold.scaffold_mod(

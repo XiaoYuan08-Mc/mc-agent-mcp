@@ -8,6 +8,7 @@ can degrade loudly instead of guessing version numbers.
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -33,6 +34,10 @@ def _get_json(url: str, timeout: float = 20.0):
     return json.loads(_get(url, timeout))
 
 
+def _key(version: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in re.findall(r"\d+", version)[:3])
+
+
 def fabric_loader_version(mc_version: str) -> str:
     try:
         data = _get_json(f"{FABRIC_META}/v2/versions/loader/{urllib.parse.quote(mc_version)}")
@@ -50,11 +55,18 @@ def fabric_api_version(mc_version: str) -> str | None:
 
 
 def loom_version(mc_version: str) -> str:
-    """Fabric Loom is version-gated: 1.20.x uses 1.7, 1.21.x uses 1.9+."""
+    """Fabric Loom is version-gated: 26.x needs 1.19+ (unobfuscated, plugin id
+    net.fabricmc.fabric-loom); 1.20.x uses 1.7, 1.21.x uses 1.9."""
+    modern = bool(_key(mc_version)) and _key(mc_version)[0] >= 26
     try:
         raw = _get(f"{FABRIC_MAVEN}/net/fabricmc/fabric-loom/maven-metadata.xml")
         root = ET.fromstring(raw)
         releases = [v.text for v in root.iter("version") if v.text and "-" not in v.text]
+        if modern:
+            pool = [r for r in releases
+                    if re.fullmatch(r"1\.[0-9]+(\.[0-9]+)?", r) and _key(r)[1] >= 19]
+            if pool:
+                return max(pool, key=_key)
         minors = sorted({r.split(".")[0] + "." + r.split(".")[1] for r in releases if "." in r})
         preferred = "1.7" if mc_version.startswith("1.20.") else "1.9"
         pool = [r for r in releases if r.startswith(preferred + ".")]
@@ -64,18 +76,41 @@ def loom_version(mc_version: str) -> str:
             return max(releases, key=lambda s: [int(x) for x in s.split(".") if x.isdigit()])
     except Exception:
         pass
+    if modern:
+        return "1.19.4"
     return "1.7-SNAPSHOT" if mc_version.startswith("1.20.") else "1.9-SNAPSHOT"
 
 
+def moddev_version(mc_version: str) -> str:
+    """ModDevGradle plugin version for the NeoForge template (2.x for 26.x)."""
+    try:
+        raw = _get(f"{NEOFORGE_MAVEN}/net/neoforged/moddev-gradle/maven-metadata.xml")
+        root = ET.fromstring(raw)
+        releases = [v.text for v in root.iter("version") if v.text and "-" not in v.text]
+        pool = [r for r in releases if r.startswith("2.")]
+        if pool:
+            return max(pool, key=_key)
+    except Exception:
+        pass
+    return "2.0.148"
+
+
 def neoforge_version(mc_version: str) -> str:
-    """NeoForge 1.21.1 -> 21.1.x, 1.20.6 -> 20.6.x."""
+    """NeoForge 1.21.1 -> 21.1.x, 1.20.6 -> 20.6.x, 26.3 -> 26.3.0.x."""
     try:
         raw = _get(f"{NEOFORGE_MAVEN}/net/neoforged/neoforge/maven-metadata.xml")
         root = ET.fromstring(raw)
         all_versions = [v.text for v in root.iter("version") if v.text]
-        parts = mc_version.split(".")
-        prefix = f"{parts[1]}.{parts[2]}" if len(parts) >= 3 else mc_version
-        pool = [v for v in all_versions if v.startswith(prefix + ".") and "-" not in v]
+        parts = [int(p) for p in re.findall(r"\d+", mc_version)]
+        if not parts:
+            raise ResolutionError(f"无法解析 Minecraft 版本: {mc_version}")
+        if parts[0] >= 26:
+            prefix = ".".join(str(p) for p in parts[:3]) + "."
+        else:
+            if len(parts) < 2:
+                raise ResolutionError(f"无法解析 Minecraft 版本: {mc_version}")
+            prefix = f"{parts[1]}.{parts[2] if len(parts) > 2 else 0}."
+        pool = [v for v in all_versions if v.startswith(prefix) and "-" not in v]
         if not pool:
             raise ResolutionError(f"NeoForge 没有匹配 {mc_version} 的版本前缀 {prefix}")
         return max(pool, key=lambda s: [int(x) for x in s.replace(".", "-").split("-") if x.isdigit()])

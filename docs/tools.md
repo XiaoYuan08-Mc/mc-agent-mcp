@@ -50,7 +50,7 @@
 | `publish_to_community` | 发布到社区市场 | artifact_path |
 | `register_java_items` | 生成 Java 物品注册（Fabric: Registry.register / NeoForge: DeferredRegister）+ 模型 + 语言文件 | — |
 | `render_inventory` | 把当前模型渲染成 64×64 背包位图（最近邻，像素风） | — |
-| `scaffold_mod` | 生成可编译的 Fabric / NeoForge 工程（wrapper 8.10 已内置，loader 版本现查） | mod_id |
+| `scaffold_mod` | 生成可编译的 Fabric / NeoForge 工程（loader/Loom/Gradle 版本现查） | mod_id |
 | `texture_3d_model` | 模型创建第 3 步：给当前模型上贴图（程序化调色板像素图，16×N 色带） | — |
 | `ui_asset_set` | 资产集登记：把图标/九宫格/贴图绑到某个布局上，校验布局存在 | — |
 | `ui_layout` | 布局 DSL：元素盒模型 + 越界/重叠/约束校验 + PNG 预览 | — |
@@ -203,7 +203,8 @@ solid=true 会把表面体素填成实心（封闭体积，代价是盒子数暴
 导出当前模型。format: bbmodel | resourcepack | geckolib | glb | mcaddon(受限)。
 
 - bbmodel：Blockbench 工程文件（可继续手改）
-- resourcepack：Java 资源包 zip（含模型 + 贴图 + 物品模型）
+- resourcepack：Java 资源包 zip（含模型 + 贴图 + 物品模型）；pack.mcmeta 按
+  mc_version 生成（1.21.9+ 写 min_format/max_format，26.3 = 97）
 - geckolib：geo/animations/texture 三件套，直接放 mod 的 assets 目录
 - glb：最小 glTF 2.0 二进制（顶点色，无贴图）
 - mcaddon：只产 geometry + 贴图，行为包/刷怪蛋需自行补（本地不生成实体行为）
@@ -217,6 +218,7 @@ solid=true 会把表面体素填成实心（封闭体积，代价是盒子数暴
 | `namespace` | string | 否 | mcagent | — |
 | `emissive_part_ids` | array / null | 否 | None | — |
 | `pixel_grain` | integer | 否 | 16 | — |
+| `mc_version` | string | 否 | 1.21.1 | — |
 
 ### `generate_3d_model`
 
@@ -717,8 +719,11 @@ items 每项：{id, name, name_en, stack_size}。贴图取当前模型的渲染�
 
 ### `scaffold_mod`
 
-生成可编译的 Fabric / NeoForge 工程（wrapper 8.10 已内置，loader 版本现查）。
+生成可编译的 Fabric / NeoForge 工程（loader/Loom/Gradle 版本现查）。
 
+minecraft_version 支持 1.16~1.21.11 的旧命名与 26.1/26.2/26.3 新命名：
+26.x 自动切 JDK 25、Gradle 9、net.fabricmc.fabric-loom（无 mappings）
+或 ModDevGradle 2.x，wrapper 也按目标版本固定。
 include_geckolib 只加依赖备注；include_mesh_model 忽略（本实现只出立方体模型）。
 
 | 参数 | 类型 | 必填 | 默认 | 说明 |

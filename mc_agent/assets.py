@@ -481,16 +481,13 @@ def export_glb(model: dict, out_path: str) -> str:
     return str(out)
 
 
-def export_resourcepack(model: dict, out_zip: str, namespace: str, entity_base: str, texture: Image.Image | None) -> dict:
+def export_resourcepack(model: dict, out_zip: str, namespace: str, entity_base: str,
+                        texture: Image.Image | None, mc_version: str = "1.21.1") -> dict:
     """Java 资源包：模型 + 贴图 + 物品模型 + 可选实体绑定。"""
     ns = namespace or "mcagent"
     name = (model.get("name") or "model").replace(" ", "_")
-    pack = {
-        "pack": {
-            "pack_format": 34,
-            "description": f"mc-agent export: {name}",
-        }
-    }
+    from mc_craft_mcp.scaffold import pack_meta
+    pack = pack_meta(mc_version, f"mc-agent export: {name}")
     files: dict[str, bytes] = {}
     files["pack.mcmeta"] = json.dumps(pack, ensure_ascii=False, indent=2).encode()
 

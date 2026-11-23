@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mc-agent-mcp"
-version = "1.0.0"
+version = "1.1.0"
 description = "我的世界创作/开发 MCP server：22 个工具家族 / 51 个工具，资产管线、绑骨动画、贴图、实例运行与构建"
 readme = "README.md"
 requires-python = ">=3.10"

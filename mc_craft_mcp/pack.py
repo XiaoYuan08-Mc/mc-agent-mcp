@@ -38,8 +38,12 @@ def resourcepack_build(pack_dir: str, output: str = "", compression: int = 9) ->
     except Exception as exc:  # noqa: BLE001
         raise PackError(f"pack.mcmeta 不是合法 JSON: {exc}") from exc
     pack = meta.get("pack") or {}
-    if not isinstance(pack.get("pack_format"), int):
-        raise PackError("pack.mcmeta 里的 pack.pack_format 必须是整数")
+    fmt = pack.get("pack_format")
+    has_range = isinstance(pack.get("min_format"), (int, list)) or isinstance(
+        pack.get("max_format"), (int, list))
+    if not isinstance(fmt, int) and not has_range:
+        raise PackError("pack.mcmeta 需要 pack.pack_format 整数，"
+                        "或 1.21.9+ 的 min_format/max_format")
     if not (root / "assets").exists():
         raise PackError("缺少 assets/ 目录，资源包没有可加载内容")
 
@@ -54,7 +58,7 @@ def resourcepack_build(pack_dir: str, output: str = "", compression: int = 9) ->
         "output": str(out),
         "files": count,
         "size": out.stat().st_size,
-        "pack_format": pack["pack_format"],
+        "pack_format": fmt if isinstance(fmt, int) else pack.get("min_format"),
         "description": pack.get("description"),
     }
 

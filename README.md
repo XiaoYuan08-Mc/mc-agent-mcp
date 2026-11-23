@@ -71,6 +71,25 @@ python tests/smoke_test.py         # 底层库 smoke（--full 会真的 scaffold
 
 测试状态落在系统临时目录（`mc-agent-test`），不污染仓库。所有可变状态都能用 `MCC_HOME` 改根目录。
 
+## 版本支持（脚手架）
+
+`scaffold_mod` 不写死版本：`minecraft_version` 填哪个，loader / Fabric API / Loom / NeoForge / ModDevGradle 就现查哪个，查不到直接报错，不猜。
+
+| Minecraft | 加载器 | JDK | Gradle | 模板要点 |
+| --- | --- | --- | --- | --- |
+| 1.16.5 ~ 1.21.11 | Fabric（Loom 1.7 / 1.9） | 8 / 11 / 17 / 21 | 8.10 | 传统 `fabric-loom` + `loom.officialMojangMappings()` + `modImplementation` |
+| 1.20.2 ~ 1.21.11 | NeoForge（ModDevGradle 2.x） | 17 / 21 | 8.10 | `neoForge { version }` + `META-INF/neoforge.mods.toml` |
+| 26.1 / 26.2 / 26.3 | Fabric（Loom 1.19+） | 25 | 9.8.2 | 插件 id `net.fabricmc.fabric-loom`，**无 mappings**，依赖走 `implementation` |
+| 26.1 / 26.2 / 26.3 | NeoForge（26.x 版本线） | 25 | 9.2.1 | MDK 布局：`templates`/`neoforge.mods.toml`、foojay toolchain、`runs`/`mods` |
+
+26.3 的实测解析与构建结果（本机验证，非模板推测）：
+
+- Fabric Loader `0.20.1`，Fabric API `0.166.2+26.3`，Loom `1.19.4`，Gradle `9.8.2` → `./gradlew build` 成功，产物 `build/libs/*.jar`
+- NeoForge `26.3.0.115`，ModDevGradle `2.0.148`，Gradle `9.2.1`，JDK 25 toolchain
+- 资源包 `pack_format`：1.21.9–1.21.10 = 69、1.21.11 = 75、26.1.x = 84、26.2 = 88、**26.3 = 97**；1.21.9 起 `pack.mcmeta` 还要写 `min_format`/`max_format`（26.3 为 `[97,0]`–`[97,1]`）
+
+JDK 由 `gradle_build` 显式选择：低于目标版本直接拒绝构建，扫描顺序是 `MCC_JAVA_HOME` / `JAVA_HOME` → scoop → Program Files，安装 JDK 25 后无需改代码。
+
 ## 工具家族
 
 | 家族 | 工具数 | 做什么 |

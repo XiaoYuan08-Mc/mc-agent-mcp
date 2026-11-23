@@ -6,4 +6,4 @@
 显式返回 `capability_unavailable`，不伪造成功。
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
