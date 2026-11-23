@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mc-agent-mcp"
+version = "1.0.0"
+description = "我的世界创作/开发 MCP server：22 个工具家族 / 51 个工具，资产管线、绑骨动画、贴图、实例运行与构建"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.0",
+    "pillow>=10.0",
+    "portablemc>=4.0",
+    "psutil>=5.9",
+]
+
+[project.scripts]
+mc-agent = "mc_agent.server:main"
+
+[tool.setuptools]
+packages = ["mc_agent", "mc_craft_mcp"]

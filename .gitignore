@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# 本地状态与产物
+mc-home/
+.mcc-home/
+instances/
+build/
+dist/
+*.egg-info/
+
+# 大体积工具链（按需自行下载）
+tools/*.zip
+
+# 密钥与本地配置
+.env
+.env.*
+*.local.json

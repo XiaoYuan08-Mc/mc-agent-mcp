@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mc-agent": {
+      "command": "mc-agent",
+      "args": [],
+      "env": {
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}
